@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>InsightBot</title>
+
+<!-- FAVICON -->
+<link rel="icon" href="data:image/svg+xml,
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
+<text y='0.9em' font-size='90'>🧠</text>
+</svg>">
+
+<style>
+:root {
+    --bg:#f4f6f8;
+    --card:#ffffff;
+    --header:#2563eb;
+    --user:#dcf8c6;
+    --bot:#e9ecef;
+    --text:#000;
+}
+body.dark {
+    --bg:#121212;
+    --card:#1e1e1e;
+    --header:#1e40af;
+    --user:#2e7d32;
+    --bot:#333;
+    --text:#f5f5f5;
+}
+
+body {
+    margin:0;
+    font-family:"Segoe UI",Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+
+.chat-container {
+    width:420px;
+    height:600px;
+    background:var(--card);
+    border-radius:14px;
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 10px 30px rgba(0,0,0,.18);
+    overflow:hidden;
+}
+
+/* HEADER */
+.chat-header {
+    background:var(--header);
+    color:white;
+    padding:14px 16px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.logo {
+    display:flex;
+    flex-direction:column;
+}
+
+.logo-title {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:18px;
+    font-weight:700;
+}
+
+.logo-tagline {
+    font-size:11px;
+    opacity:0.85;
+}
+
+/* DARK MODE TOGGLE */
+.theme-toggle {
+    display:flex;
+    align-items:center;
+    gap:6px;
+    cursor:pointer;
+}
+
+.theme-toggle input {
+    width:18px;
+    height:18px;
+}
+
+/* CONTROLS */
+.controls {
+    padding:8px;
+    font-size:13px;
+    border-bottom:1px solid #ddd;
+}
+
+.controls button {
+    padding:5px 10px;
+    margin:3px;
+    border:none;
+    border-radius:6px;
+    background:var(--header);
+    color:white;
+    cursor:pointer;
+}
+
+.controls button:hover {
+    opacity:0.9;
+}
+
+/* CHAT */
+.chat-box {
+    flex:1;
+    padding:15px;
+    overflow-y:auto;
+    scroll-behavior:smooth;
+}
+
+.message {
+    max-width:75%;
+    padding:10px 12px;
+    margin-bottom:10px;
+    border-radius:12px;
+    font-size:14px;
+}
+
+.user {
+    background:var(--user);
+    margin-left:auto;
+}
+
+.bot {
+    background:var(--bot);
+    margin-right:auto;
+}
+
+.time {
+    font-size:11px;
+    opacity:.6;
+    margin-top:4px;
+    text-align:right;
+}
+
+/* LOADING SPINNER */
+.spinner {
+    width:20px;
+    height:20px;
+    border:3px solid rgba(0,0,0,.2);
+    border-top:3px solid var(--header);
+    border-radius:50%;
+    animation:spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* INPUT */
+.input-area {
+    display:flex;
+    padding:10px;
+    border-top:1px solid #ccc;
+}
+
+.input-area input {
+    flex:1;
+    padding:10px;
+    border-radius:6px;
+    border:1px solid #aaa;
+    outline:none;
+}
+
+.input-area button {
+    margin-left:8px;
+    padding:10px 15px;
+    border:none;
+    border-radius:6px;
+    background:var(--header);
+    color:white;
+    cursor:pointer;
+}
+
+/* MOBILE */
+@media (max-width:480px) {
+    .chat-container {
+        width:95%;
+        height:95vh;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="chat-container">
+
+    <!-- HEADER -->
+    <div class="chat-header">
+        <div class="logo">
+            <div class="logo-title">🧠 InsightBot</div>
+            <div class="logo-tagline">Chat smarter with your documents</div>
+        </div>
+        <label class="theme-toggle">
+            🌙
+            <input type="checkbox" onchange="toggleDarkMode()">
+        </label>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="controls">
+        <input type="file" id="pdf-file" accept="application/pdf">
+        <button onclick="uploadPDF()">Upload</button>
+        <button onclick="loadHistory()">History</button>
+        <button onclick="clearUI()">Clear</button><br>
+        <label><input type="checkbox" id="pdf-toggle"> Use PDF</label>
+        <span id="upload-status"></span>
+    </div>
+
+    <!-- CHAT -->
+    <div class="chat-box" id="chat-box"></div>
+
+    <!-- INPUT -->
+    <div class="input-area">
+        <input id="user-input" placeholder="Type your message...">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+</div>
+
+<script>
+const chatBox = document.getElementById("chat-box");
+
+function formatTime(date=null){
+    const d = date ? new Date(date) : new Date();
+    return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12:true});
+}
+
+function addMessage(text, role, time=null){
+    const div=document.createElement("div");
+    div.className=`message ${role}`;
+    div.innerHTML=`<div>${text}</div><div class="time">${time || formatTime()}</div>`;
+    chatBox.appendChild(div);
+    chatBox.scrollTop=chatBox.scrollHeight;
+}
+
+function showSpinner(){
+    const div=document.createElement("div");
+    div.className="message bot";
+    div.innerHTML='<div class="spinner"></div>';
+    chatBox.appendChild(div);
+    chatBox.scrollTop=chatBox.scrollHeight;
+    return div;
+}
+
+function sendMessage(){
+    const input=document.getElementById("user-input");
+    const msg=input.value.trim();
+    if(!msg) return;
+
+    addMessage(msg,"user");
+    input.value="";
+
+    const spinner = showSpinner();
+
+    fetch("/chat",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            message:msg,
+            use_pdf:document.getElementById("pdf-toggle").checked
+        })
+    })
+    .then(r=>r.json())
+    .then(d=>{
+        spinner.remove();
+        addMessage(d.reply,"bot");
+    });
+}
+
+function loadHistory(){
+    fetch("/history")
+    .then(r=>r.json())
+    .then(data=>{
+        chatBox.innerHTML="";
+        data.forEach(i=>{
+            addMessage(i[1], i[0]==="user"?"user":"bot", formatTime(i[2]));
+        });
+    });
+}
+
+function uploadPDF(){
+    const f=document.getElementById("pdf-file").files[0];
+    if(!f) return;
+    const fd=new FormData();
+    fd.append("pdf",f);
+    fetch("/upload_pdf",{method:"POST",body:fd})
+    .then(r=>r.json())
+    .then(d=>document.getElementById("upload-status").innerText=d.message);
+}
+
+function clearUI(){ chatBox.innerHTML=""; }
+
+function toggleDarkMode(){
+    document.body.classList.toggle("dark");
+}
+
+document.getElementById("user-input")
+.addEventListener("keypress",e=>{ if(e.key==="Enter") sendMessage(); });
+</script>
+
+</body>
+</html>
