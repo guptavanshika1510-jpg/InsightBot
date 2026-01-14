@@ -256,29 +256,42 @@ function showSpinner(){
     return div;
 }
 
-function sendMessage(){
-    const input=document.getElementById("user-input");
-    const msg=input.value.trim();
+
+async function sendMessage(){
+    const input = document.getElementById("user-input");
+    const msg = input.value.trim();
     if(!msg) return;
 
     addMessage(msg,"user");
     input.value="";
 
-    const spinner = showSpinner();
+    // Create bot bubble
+    const botDiv = document.createElement("div");
+    botDiv.className = "message bot";
+    botDiv.innerHTML = `<div></div><div class="time">${formatTime()}</div>`;
+    chatBox.appendChild(botDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
 
-    fetch("/chat",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            message:msg,
-            use_pdf:document.getElementById("pdf-toggle").checked
-        })
-    })
-    .then(r=>r.json())
-    .then(d=>{
-        spinner.remove();
-        addMessage(d.reply,"bot");
+    // Fetch streaming response
+    const response = await fetch("/chat_stream", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ message: msg })
     });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    let text = "";
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        text += decoder.decode(value);
+        botDiv.children[0].textContent = text;
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
 }
 
 function loadHistory(){

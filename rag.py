@@ -1,28 +1,75 @@
 import os
+import faiss
+import numpy as np
 from pypdf import PdfReader
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 
+# ==========================
+# MODEL & STORAGE
+# ==========================
+EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+
+vector_index = None
+chunks_store = []
+
+
+# ==========================
+# PDF LOADER
+# ==========================
 def load_pdf_text(pdf_path):
-    if not os.path.exists(pdf_path):
-        return None
-
     reader = PdfReader(pdf_path)
     text = ""
     for page in reader.pages:
-        text += page.extract_text() + "\n"
+        if page.extract_text():
+            text += page.extract_text() + "\n"
     return text
 
-def get_relevant_context(query, pdf_text, top_k=3):
-    if not pdf_text:
-        return None
 
-    chunks = pdf_text.split("\n\n")
+# ==========================
+# TEXT CHUNKING
+# ==========================
+def chunk_text(text, chunk_size=400, overlap=50):
+    words = text.split()
+    chunks = []
 
-    vectorizer = TfidfVectorizer()
-    vectors = vectorizer.fit_transform(chunks + [query])
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk = " ".join(words[i:i + chunk_size])
+        chunks.append(chunk)
 
-    similarities = cosine_similarity(vectors[-1], vectors[:-1])
-    top_indices = similarities[0].argsort()[-top_k:]
+    return chunks
 
-    return "\n".join([chunks[i] for i in top_indices])
+
+# ==========================
+# INDEX PDF (EMBEDDINGS)
+# ==========================
+def index_pdf(text):
+    global vector_index, chunks_store
+
+    chunks_store = chunk_text(text)
+
+    embeddings = EMBEDDING_MODEL.encode(chunks_store)
+    embeddings = np.array(embeddings).astype("float32")
+
+    dimension = embeddings.shape[1]
+    vector_index = faiss.IndexFlatL2(dimension)
+    vector_index.add(embeddings)
+
+
+# ==========================
+# RETRIEVE CONTEXT
+# ==========================
+def get_relevant_context(query, top_k=4):
+    if vector_index is None:
+        return ""
+
+    query_embedding = EMBEDDING_MODEL.encode([query])
+    query_embedding = np.array(query_embedding).astype("float32")
+
+    distances, indices = vector_index.search(query_embedding, top_k)
+
+    results = []
+    for idx in indices[0]:
+        if idx < len(chunks_store):
+            results.append(chunks_store[idx])
+
+    return "\n\n".join(results)

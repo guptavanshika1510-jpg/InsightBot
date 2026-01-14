@@ -1,50 +1,58 @@
 import os
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from werkzeug.utils import secure_filename
 
-from chatbot import get_ai_response, update_pdf
+from chatbot import stream_ai_response, update_pdf
 from database import init_db, get_all_messages
 
 app = Flask(__name__)
-
 init_db()
 
 UPLOAD_FOLDER = "data/uploads"
-ALLOWED_EXTENSIONS = {"pdf"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
+# =========================
+# HOME
+# =========================
 @app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/chat", methods=["POST"])
-def chat():
+# =========================
+# STREAM CHAT (LIVE TOKENS)
+# =========================
+@app.route("/chat_stream", methods=["POST"])
+def chat_stream():
     data = request.json
-    reply = get_ai_response(
-        data.get("message"),
-        data.get("use_pdf", False)
-    )
-    return jsonify({"reply": reply})
+    user_message = data.get("message", "")
+    use_pdf = data.get("use_pdf", False)
 
+    def generate():
+        for chunk in stream_ai_response(user_message, use_pdf):
+            yield chunk
+
+    return Response(generate(), mimetype="text/plain")
+
+# =========================
+# UPLOAD PDF
+# =========================
 @app.route("/upload_pdf", methods=["POST"])
 def upload_pdf():
     file = request.files.get("pdf")
-    if not file or file.filename == "":
-        return jsonify({"message": "No file selected."})
+    if not file:
+        return jsonify({"message": "No file uploaded."})
 
-    if allowed_file(file.filename):
-        path = os.path.join(app.config["UPLOAD_FOLDER"], secure_filename(file.filename))
-        file.save(path)
-        update_pdf(path)
-        return jsonify({"message": "PDF uploaded successfully."})
+    path = os.path.join(app.config["UPLOAD_FOLDER"], secure_filename(file.filename))
+    file.save(path)
+    update_pdf(path)
 
-    return jsonify({"message": "Invalid file type."})
+    return jsonify({"message": "PDF indexed successfully."})
 
-@app.route("/history", methods=["GET"])
+# =========================
+# CHAT HISTORY
+# =========================
+@app.route("/history")
 def history():
     return jsonify(get_all_messages())
 
